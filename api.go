@@ -76,14 +76,14 @@ type Shipping struct {
 }
 
 type ShippingAddress struct {
-	Country    string `xml:"country"`    // It's always "BRA" ¯\_(ツ)_/¯
-	State      string `xml:"state"`      // "SP"
-	City       string `xml:"city"`       // max 60 min 2
-	PostalCode string `xml:"postalCode"` // XXXXXXXX
-	District   string `xml:"district"`   // Bairro | max chars: 60
-	Street     string `xml:"street"`     // max: 80
-	Number     string `xml:"number"`     // max: 20
-	Complement string `xml:"complement"` // max: 40
+	Country    string `xml:"country"`              // It's always "BRA" ¯\_(ツ)_/¯
+	State      string `xml:"state,omitempty"`      // "SP"
+	City       string `xml:"city,omitempty"`       // max 60 min 2
+	PostalCode string `xml:"postalCode,omitempty"` // XXXXXXXX
+	District   string `xml:"district,omitempty"`   // Bairro | max chars: 60
+	Street     string `xml:"street,omitempty"`     // max: 80
+	Number     string `xml:"number,omitempty"`     // max: 20
+	Complement string `xml:"complement,omitempty"` // max: 40
 }
 
 type Metadata struct {
