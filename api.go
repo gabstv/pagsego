@@ -16,11 +16,55 @@ import (
 )
 
 const (
-	ShippingPAC   = 1
-	ShippingSEDEX = 2
-	ShippingOther = 3
-	XMLHeader     = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-	CheckoutURL   = "https://ws.pagseguro.uol.com.br/v2/checkout"
+	ShippingPAC     = 1
+	ShippingSEDEX   = 2
+	ShippingOther   = 3
+	XMLHeader       = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+	CheckoutURL     = "https://ws.pagseguro.uol.com.br/v2/checkout"
+	TransactionsURL = "https://ws.pagseguro.uol.com.br/v2/transactions/notifications"
+
+	TransactionTypePayment = 1
+
+	TransactionStatusAwaitingPayment = 1
+	TransactionStatusInAnalysis      = 2
+	TransactionStatusPaid            = 3
+	TransactionStatusAvailable       = 4
+	TransactionStatusInDispute       = 5
+	TransactionStatusReturned        = 6
+	TransactionStatusCanceled        = 7
+
+	PaymentMethodCreditCardVisa             = 101
+	PaymentMethodCreditCardMasterCard       = 102
+	PaymentMethodCreditCardAMEX             = 103
+	PaymentMethodCreditCardDiners           = 104
+	PaymentMethodCreditCardHipercard        = 105
+	PaymentMethodCreditCardAura             = 106
+	PaymentMethodCreditCardElo              = 107
+	PaymentMethodCreditCardPLENOCard        = 108
+	PaymentMethodCreditCardPersonalCard     = 109
+	PaymentMethodCreditCardJCB              = 110
+	PaymentMethodCreditCardDiscover         = 111
+	PaymentMethodCreditCardBrasilCard       = 112
+	PaymentMethodCreditCardFORTBRASIL       = 113
+	PaymentMethodCreditCardCARDBAN          = 114
+	PaymentMethodCreditCardVALECARD         = 115
+	PaymentMethodCreditCardCabal            = 116
+	PaymentMethodCreditCardMais             = 117
+	PaymentMethodCreditCardAvista           = 118
+	PaymentMethodCreditCardGRANDCARD        = 119
+	PaymentMethodBoletoBradesco             = 201
+	PaymentMethodBoletoSantander            = 202
+	PaymentMethodDebitoOnlineBradesco       = 301
+	PaymentMethodDebitoOnlineItau           = 302
+	PaymentMethodDebitoOnlineUnibanco       = 303
+	PaymentMethodDebitoOnlineBancoDoBrasil  = 304
+	PaymentMethodDebitoOnlineBancoReal      = 305
+	PaymentMethodDebitoOnlineBanrisul       = 306
+	PaymentMethodDebitoOnlineHSBC           = 307
+	PaymentMethodSaldoPagSeguro             = 401
+	PaymentMethodOiPaggo                    = 501
+	PaymentMethodDepositoContaBancoDoBrasil = 701
+	PaymentMethodDepositoContaHSBC          = 702
 )
 
 type PaymentRequest struct {
@@ -112,6 +156,34 @@ type PaymentPreSubmitResult struct {
 	CheckoutResponse *PaymentPreResponse
 	Error            *ErrorResponse
 	Success          bool
+}
+
+type Transaction struct {
+	XMLName            xml.Name                  `xml:"transaction"`
+	Date               string                    `xml:"date,omitempty"`
+	Code               string                    `xml:"code,omitempty"`
+	Reference          string                    `xml:"reference,omitempty"`
+	Type               int                       `xml:"type,omitempty"`
+	Status             int                       `xml:"status,omitempty"`
+	LastEventDate      string                    `xml:"lastEventDate,omitempty"`
+	PaymentMethod      *TransactionPaymentMethod `xml:"paymentMethod,omitempty"`
+	GrossAmount        string                    `xml:"grossAmount,omitempty"`
+	DiscountAmount     string                    `xml:"discountAmount,omitempty"`
+	FeeAmount          string                    `xml:"feeAmount,omitempty"`
+	NetAmount          string                    `xml:"netAmount,omitempty"`
+	EscrowEndDate      string                    `xml:"escrowEndDate,omitempty"`
+	ExtraAmount        string                    `xml:"extraAmount,omitempty"`
+	InstallmentCount   int                       `xml:"installmentCount,omitempty"`
+	ItemCount          int                       `xml:"itemCount,omitempty"`
+	Items              []*PaymentItem            `xml:"items>item,omitempty"`
+	Buyer              *Buyer                    `xml:"sender,omitempty"`
+	Shipping           *Shipping                 `xml:"shipping,omitempty"`
+	CancellationSource string                    `xml:"cancellationSource,omitempty"`
+}
+
+type TransactionPaymentMethod struct {
+	Type int `xml:"type"`
+	Code int `xml:"code"`
 }
 
 func NewPaymentRequest(sellerToken, sellerEmail, referenceID, redirectURL, notificationURL string) *PaymentRequest {
@@ -322,5 +394,42 @@ func (r *PaymentRequest) Submit() (result *PaymentPreSubmitResult) {
 
 	result.CheckoutResponse = success
 	result.Success = true
+	return
+}
+
+func FetchTransactionInfo(sellerToken, sellerEmail, notificationCode string) (result *Transaction, err error) {
+	result = &Transaction{}
+
+	// Conectar com timeout caso o PagSeguro esteja morgando
+	functimeout := func(network, addr string) (net.Conn, error) {
+		return net.DialTimeout(network, addr, time.Duration(30*time.Second))
+	}
+
+	// create a custom http client that ignores https cert validity, so we don't have to install PagSeguro CAs
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		Dial:            functimeout,
+	}
+	client := &http.Client{Transport: tr}
+
+	transactionsURL := fmt.Sprintf("%s/%s?email=%s&token=%s&charset=%s", TransactionsURL, notificationCode, sellerEmail, sellerToken, "UTF-8")
+	resp, err := client.Get(transactionsURL)
+
+	if err != nil {
+		log.Println("^~PAGSEGO~^ client.Get ERROR: " + err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	var buffer bytes.Buffer
+	io.Copy(&buffer, resp.Body)
+
+	decoder := xml.NewDecoder(&buffer)
+	decoder.CharsetReader = charset.NewReader
+	err = decoder.Decode(result)
+	if err != nil {
+		log.Println("^~PAGSEGO~^ decoder.Decode ERROR: " + err.Error())
+		return
+	}
+	err = nil
 	return
 }
